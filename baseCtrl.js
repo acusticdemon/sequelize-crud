@@ -3,15 +3,17 @@
 var _ = require('lodash');
 var Promise = require('bluebird');
 var HttpError = require('http-errors');
+var paramsToTree = require('params-to-tree');
 
 var models = require('../../models');
-var paramsToTree = require('./paramsToTree');
 
 const LIMIT = 'limit';
 const OFFSET = 'offset';
 const ORDER = 'order';
 const INCLUDE = 'include';
-const IGNORE = [LIMIT, OFFSET, ORDER, INCLUDE];
+const ATTRIBUTES = 'attributes';
+const EXCLUDE = 'exclude';
+const IGNORE = [LIMIT, OFFSET, ORDER, INCLUDE, ATTRIBUTES];
 
 /**
  * @typedef {Object} requestParams
@@ -27,6 +29,9 @@ class Base {
         this.modelName = this.constructor.name;
         this.model = models[this.modelName];
         this.relations = _.map(this.model.associations, model => model.target.name);
+
+        this.defaultAttributes = null;
+        this.defaultExclude = null;
     }
 
     static get LIMIT() {
@@ -166,7 +171,12 @@ class Base {
         let limit = +_.get(options, LIMIT, this.constructor.LIMIT);
         let offset = +_.get(options, OFFSET, this.constructor.OFFSET);
 
+        let attributes = options.attributes || this.defaultAttributes || Object.keys(this.model.attributes);
+
+        attributes = _.difference(attributes, options.exclude, this.defaultExclude);
+
         return {
+            attributes,
             where,
             include: _.values(include),
             order,
