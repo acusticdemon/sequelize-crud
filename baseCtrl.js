@@ -3,9 +3,9 @@
 var _ = require('lodash');
 var Promise = require('bluebird');
 var HttpError = require('http-errors');
-var paramsToTree = require('params-to-tree');
 
 var models = require('../../models');
+var paramsToTree = require('params-to-tree');
 
 const LIMIT = 'limit';
 const OFFSET = 'offset';
@@ -91,9 +91,23 @@ class Base {
             });
     }
 
+
+    /**
+     * If create fails with UniqueConstraintError return found object by query
+     * @param data
+     * @return {Promise.<T>}
+     */
     create(data) {
         return this.model
             .create(data)
+            .catch(e => {
+                if (!(e instanceof models.Sequelize.UniqueConstraintError)) {
+                    throw e;
+                }
+
+                return this.model
+                    .findOne({where: data})
+            })
             .then(data => ({data}));
     }
 
@@ -143,6 +157,13 @@ class Base {
         let include = _.reduce(options, (include, val, name) => {
             if (this.relations.indexOf(name) > -1) {
                 _.set(include, name + '.model', models[name]);
+
+                let attributes = _.get(_.pick(val, ATTRIBUTES), ATTRIBUTES);
+                if (attributes) {
+                    _.set(include, [name, ATTRIBUTES].join('.'), _.isArray(attributes) ? attributes : [attributes]);
+                    val = _.omit(val, ATTRIBUTES)
+                }
+
                 _.set(include, name + '.where', models.Sequelize.and(val));
             }
 
@@ -172,6 +193,7 @@ class Base {
         let offset = +_.get(options, OFFSET, this.constructor.OFFSET);
 
         let attributes = options.attributes || this.defaultAttributes || Object.keys(this.model.attributes);
+        attributes = _.isArray(attributes) ? attributes : [attributes];
 
         attributes = _.difference(attributes, options.exclude, this.defaultExclude);
 
